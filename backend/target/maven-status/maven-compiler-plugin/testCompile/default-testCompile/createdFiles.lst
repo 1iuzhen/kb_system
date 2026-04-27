@@ -1,0 +1,15 @@
+com\kbsystem\backend\workspace\controller\WorkspaceControllerTest$CreateBody.class
+com\kbsystem\backend\auth\service\AuthServiceImplTest.class
+com\kbsystem\backend\doc\controller\DocumentControllerTest.class
+com\kbsystem\backend\audit\aspect\AuditLogAspectTest.class
+com\kbsystem\backend\chat\controller\RagChatControllerTest.class
+com\kbsystem\backend\workspace\service\WorkspaceServiceImplTest.class
+com\kbsystem\backend\doc\controller\DocumentControllerTest$CreateBody.class
+com\kbsystem\backend\audit\event\AuditLogEventListenerTest.class
+com\kbsystem\backend\auth\controller\AuthControllerTest$RefreshBody.class
+com\kbsystem\backend\workspace\controller\WorkspaceControllerTest.class
+com\kbsystem\backend\auth\controller\AuthControllerTest$LoginBody.class
+com\kbsystem\backend\chat\service\RagChatServiceImplTest.class
+com\kbsystem\backend\auth\controller\AuthControllerTest.class
+com\kbsystem\backend\doc\service\DocumentServiceImplTest.class
+com\kbsystem\backend\audit\aspect\AuditLogAspectTest$1.class

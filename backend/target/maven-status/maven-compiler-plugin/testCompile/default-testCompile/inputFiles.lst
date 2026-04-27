@@ -1,0 +1,10 @@
+E:\AIAgent\kb_system\backend\src\test\java\com\kbsystem\backend\audit\aspect\AuditLogAspectTest.java
+E:\AIAgent\kb_system\backend\src\test\java\com\kbsystem\backend\doc\service\DocumentServiceImplTest.java
+E:\AIAgent\kb_system\backend\src\test\java\com\kbsystem\backend\auth\controller\AuthControllerTest.java
+E:\AIAgent\kb_system\backend\src\test\java\com\kbsystem\backend\auth\service\AuthServiceImplTest.java
+E:\AIAgent\kb_system\backend\src\test\java\com\kbsystem\backend\chat\service\RagChatServiceImplTest.java
+E:\AIAgent\kb_system\backend\src\test\java\com\kbsystem\backend\doc\controller\DocumentControllerTest.java
+E:\AIAgent\kb_system\backend\src\test\java\com\kbsystem\backend\workspace\service\WorkspaceServiceImplTest.java
+E:\AIAgent\kb_system\backend\src\test\java\com\kbsystem\backend\audit\event\AuditLogEventListenerTest.java
+E:\AIAgent\kb_system\backend\src\test\java\com\kbsystem\backend\chat\controller\RagChatControllerTest.java
+E:\AIAgent\kb_system\backend\src\test\java\com\kbsystem\backend\workspace\controller\WorkspaceControllerTest.java

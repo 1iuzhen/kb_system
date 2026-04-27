@@ -1,0 +1,108 @@
+# 智能知识库管理系统 - Cursor 开发规则
+## 项目功能说明
+  功能有文件上传功能，支持多种文件格式上传，支持 pdf,word,md等，每个用户可以创建多个知识库 并可以为知识库命名,上传文档后，默认 文档名字为 文件名字， 当然可以支持修改此文档名， 然后将该文档转化为md文件存放在知识库下，用户可以编辑修改（像语雀那种），每次保存后， 然后索引到向量数据库中 ，也就是说 一个用户可以管理多个知识库的下的多个文档，还有 一个功能是 智能对话窗口，用户可以提问，然后RAG 进行回答。
+## 技术栈约束
+- 后端：Spring Boot 3.2, Java 17, Maven, Spring AI 1.0.0-RC2, MyBatis-Plus, PostgreSQL 16 + pgvector, Redis 7, MinIO, Spring Security, JWT
+- 前端：React 18, TypeScript, Vite 5, Ant Design 5, Zustand, Axios, Vditor, React Router v6
+- 部署：Docker Compose
+- AI 模型：通义千问 LLM + 通义千问文本向量化 text-embedding-v2 (1024 维)
+
+## 架构规范
+- 后端分层：Controller(VO) -&gt; Service(DTO) -&gt; Mapper(Entity)，禁止跨层调用
+- 统一响应：Result&lt;T&gt;(code, msg, data)，HTTP 200，业务错误走 code
+- 异常处理：全局 @RestControllerAdvice，禁止 try-catch 吞异常，必须记录 error log
+- 前端目录：按 feature 组织 src/features/{auth,workspace,doc,chat}，API 层独立封装
+- 类型安全：前端禁止 any，后端禁止 raw Map 返回
+- 接口规范：RESTful，统一前缀 /api/v1
+
+## 数据库规范
+- 表名：kb_ 前缀（业务表），sys_ 前缀（系统表），蛇形命名
+- 基础字段：id(主键), create_time, update_time, deleted(逻辑删除), update_version(乐观锁)
+- 向量字段：embedding vector(1024) 【通义千问 text-embedding-v2 固定维度】
+- 索引：
+  1. 外键、查询条件字段必建 BTree 索引
+  2. 向量索引：CREATE INDEX idx_chunk_embedding ON kb_chunk USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64);
+  3. 全文检索：对 kb_document_version.content 建立 GIN 索引（pg_trgm）
+
+## 存储规范（MinIO + PostgreSQL）
+- 原始文件：MinIO 桶 kb-raw，路径 {userId}/{workspaceId}/{docId}/{uuid}.ext，私有桶
+- Markdown 内容：存 PostgreSQL kb_document_version.content (TEXT 类型)，便于版本对比、全文检索、事务一致性
+- 文件访问：全部通过后端签名 URL，禁止前端直连 MinIO
+
+## 用户与权限
+- 认证：JWT 无状态认证，access_token 2h，refresh_token 7d
+- 知识库成员：kb_workspace_member 表，role 枚举：owner/editor/viewer
+- 数据隔离：查询自动拼接 workspace_id + user_id（通过成员表关联）
+- 文档编辑：仅 owner/editor 可保存；viewer 进入 Vditor 只读模式
+
+## 文档状态机
+- 原始文件：uploading -&gt; parsing -&gt; parsed -&gt; failed
+- 文档版本：draft -&gt; indexing -&gt; indexed -&gt; failed
+- 状态流转：
+  1. 上传完成 → parsing
+  2. 解析成功 → parsed（此时可编辑）
+  3. 用户保存 → indexing（异步向量入库）
+  4. 索引完成 → indexed（可参与 RAG）
+  5. 任何环节失败 → failed，记录 error_msg
+
+## 版本控制
+- 每次保存生成新版本，version_no 自增
+- 支持查询历史版本列表、回滚到指定版本（仅恢复内容，不删除后续版本）
+- 向量库只索引最新已发布版本
+- 乐观锁：update_version 字段，保存时校验前端 baseVersion，不一致返回 409 Conflict
+
+## 审计日志（强制）
+- 原则：**所有用户写操作必须留痕**，读操作按需记录（RAG 对话必须记录）
+- 存储：PostgreSQL 表 sys_operation_log，异步写入（Spring Event + @Async），禁止同步阻塞业务
+- 记录内容：
+  - 操作人：user_id, username
+  - 操作对象：target_type(workspace/document/chat), target_id
+  - 动作：action(create/update/delete/upload/save/index/query_rag)
+  - 详情：operation_detail(JSON 格式，记录变更前后关键字段，如文件名从 A 改为 B)
+  - 上下文：ip, user_agent, request_method, request_uri, request_params
+  - 结果：status(success/failed), error_msg(失败时)
+  - 耗时：execution_time_ms
+- 实现方式：
+  1. 首选：自定义注解 @AuditLog("创建知识库") + AOP 切面自动拦截
+  2. 次选：Service 层关键位置手动注入 AuditLogService
+  3. 禁止：在 Controller 层直接写日志代码（污染接口层）
+- 敏感操作必记：登录/登出、知识库删除、文档保存/回滚、成员权限变更、RAG 对话提问
+- 日志保留：自动归档，保留 90 天，超期迁移至冷存储或清理
+
+## RAG 流程约束
+- 分块策略：
+  1. Markdown 按 H1/H2/H3 标题切分，无标题段落按 800 字切分
+  2. overlap 150 字，保留标题层级、块序号
+  3. 过滤空块、纯空白内容
+- 向量入库：
+  1. 文档保存后异步触发（ApplicationEvent + @Async）
+  2. 幂等设计：同一 version_id 重复触发时，先删旧向量再入库
+  3. 重试：失败自动重试 3 次，仍失败标记 failed 并记录错误
+- 对话：
+  1. SSE 流式输出，格式：data: {"type":"text","content":"..."} 或 {"type":"ref","sources":[...]}
+  2. 最后一条消息 type="done"，携带完整 sources 数组
+  3. 引用来源字段：chunk_id, doc_id, doc_title, snippet(前200字), score
+  4. 检索范围：绑定知识库时仅检索该库；全局对话检索用户有权限的所有知识库
+
+## 前端规范
+- Vditor 模式：默认 wysiwyg（所见即所得），支持 ir/sv 切换
+- 自动保存：编辑后 3 秒防抖自动保存，保存时锁定编辑区（loading）
+- 状态管理：Zustand 按 feature 分 store（useAuthStore, useWorkspaceStore, useDocStore, useChatStore）
+- SSE 消费：使用 EventSource，前端需处理 error/reconnect，超时 30s 自动重连
+- 前端日志：仅记录 ERROR 级别（Sentry/Lightning 方式），用户操作审计由后端负责，前端不重复记录
+
+## 测试强制策略
+- 后端单元测试：每个 Service/Controller/Mapper 同步生成 JUnit 5 + Mockito，使用 AssertJ 断言，测试类命名 {ClassName}Test
+- 后端集成测试：涉及数据库/向量/RAG/文件存储的，必须生成 Testcontainers 测试，基类名 BaseIntegrationTest
+- 前端组件测试：每个页面/复杂组件同步生成 React Testing Library + MSW 测试，禁止 jest.mock('axios')
+- 前端工具测试：utils/hooks/store 必须带 Jest 单元测试
+- 覆盖率底线：核心业务逻辑（权限、RAG、文件解析、乐观锁）分支覆盖率 &gt;= 90%，其他 &gt;= 70%
+- 测试即文档：测试方法名必须见名知意（shouldThrowWhenPermissionDenied），禁止 test1/test2
+
+## Cursor 生成偏好
+- 生成 Java 代码时，必须同时生成对应的 JUnit 5 + Mockito 单元测试
+- 生成 React 组件时，必须同时生成 TypeScript 类型和 Zustand store 更新逻辑
+- 生成 SQL 时，必须包含注释、索引、pgvector 语法
+- 修改代码时优先使用 Composer，保持跨文件一致性
+- 所有接口必须生成 SpringDoc OpenAPI 注解
+- 禁止：生成业务代码时不生成测试；禁止用 "后续补充" 作为理由跳过测试
