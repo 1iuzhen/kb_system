@@ -33,7 +33,7 @@ app:
     # OpenAI 兼容接口地址（可接阿里云通义千问兼容模式或本地网关）
     base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
     # 请替换为真实 key，生产环境建议使用环境变量注入
-    api-key: xxx
+    api-key: sk-3d2c8b97b3884b58bf12d5ad76ee5ea7
     embedding-model: text-embedding-v2
     embedding-dim: 1536
     chat-model: qwen-plus
